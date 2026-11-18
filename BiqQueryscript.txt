@@ -1,0 +1,158 @@
+BiqQuery script
+--DataConfig
+CREATE TABLE `config_metadata.DataConfig` (
+  provider_id           STRING      NOT NULL,
+  raw_path              STRING      NOT NULL,
+  bronze_path           STRING      NOT NULL,
+  silver_path           STRING      NOT NULL,
+  file_type             STRING      NOT NULL,   -- csv / json / parquet
+  delimiter             STRING,                 -- e.g. ',' | '|' (null for parquet/json)
+  write_mode            STRING      NOT NULL,   -- append / overwrite / merge
+  header                BOOL        NOT NULL,   -- true if file has header
+  ingestion_frequency   STRING      NOT NULL,   -- daily / hourly / ad-hoc
+  active                BOOL        NOT NULL,   -- enable/disable provider
+  created_at            TIMESTAMP   DEFAULT CURRENT_TIMESTAMP(),
+  updated_at            TIMESTAMP
+);
+
+
+INSERT INTO `config_metadata.DataConfig`
+(
+  provider_id,
+  raw_path,
+  bronze_path,
+  silver_path,
+  file_type,
+  delimiter,
+  write_mode,
+  header,
+  ingestion_frequency,
+  active
+)
+VALUES
+(
+  'provider_retail',
+  'gs://retail-datalake/provider-ingress/raw/provider_retail/',
+  'gs://retail-datalake/provider-ingress/bronze/provider_retail/',
+  'gs://retail-datalake/provider-ingress/silver/provider_retail/',
+  'csv',
+  ',',
+  'append',
+  TRUE,
+  'daily',
+  TRUE
+);
+
+--Schema Config
+CREATE TABLE `config_metadata.SchemaConfig` (
+  provider_id     STRING     NOT NULL,
+  table_name      STRING     NOT NULL,
+  column_name     STRING     NOT NULL,
+  data_type       STRING     NOT NULL,   -- STRING, INT64, FLOAT64, BOOL, TIMESTAMP, DATE, etc.
+  nullable        BOOL       NOT NULL,   -- true / false
+  description     STRING,                -- optional column description
+  created_at      TIMESTAMP  DEFAULT CURRENT_TIMESTAMP(),
+  updated_at      TIMESTAMP
+);
+
+
+INSERT INTO `config_metadata.SchemaConfig`
+(
+  provider_id,
+  table_name,
+  column_name,
+  data_type,
+  nullable,
+  description
+)
+VALUES
+  ('provider_retail', 'silver_retail_sales', 'InvoiceNo',   'STRING',     FALSE, 'Invoice number'),
+  ('provider_retail', 'silver_retail_sales', 'StockCode',   'STRING',     FALSE, 'Product stock code'),
+  ('provider_retail', 'silver_retail_sales', 'Description', 'STRING',     TRUE,  'Product description'),
+  ('provider_retail', 'silver_retail_sales', 'Quantity',    'INT64',      FALSE, 'Quantity sold'),
+  ('provider_retail', 'silver_retail_sales', 'InvoiceDate', 'TIMESTAMP',  FALSE, 'Invoice date and time'),
+  ('provider_retail', 'silver_retail_sales', 'UnitPrice',   'FLOAT64',    FALSE, 'Unit price'),
+  ('provider_retail', 'silver_retail_sales', 'CustomerID',  'STRING',     TRUE,  'Customer identifier'),
+  ('provider_retail', 'silver_retail_sales', 'Country',     'STRING',     TRUE,  'Customer country');
+
+  --Extra Config
+CREATE TABLE `config_metadata.ExtraConfig` (
+  provider_id      STRING     NOT NULL,
+  rule_name        STRING     NOT NULL,   -- unique rule identifier per provider
+  rule_type        STRING     NOT NULL,   -- validation / transformation / enrichment
+  rule_condition   STRING     NOT NULL,   -- SQL-like condition or expression
+  value            STRING,                -- optional param (threshold, column, default, etc.)
+  active           BOOL       NOT NULL,   -- enable/disable rule
+  created_at       TIMESTAMP  DEFAULT CURRENT_TIMESTAMP(),
+  updated_at       TIMESTAMP
+);
+
+
+  INSERT INTO `config_metadata.ExtraConfig`
+(
+  provider_id,
+  rule_name,
+  rule_type,
+  rule_condition,
+  value,
+  active
+)
+VALUES
+  (
+    'provider_retail',
+    'drop_null_customer',
+    'validation',
+    'CustomerID IS NOT NULL',
+    NULL,
+    TRUE
+  ),
+  (
+    'provider_retail',
+    'filter_negative_quantity',
+    'validation',
+    'Quantity > 0',
+    NULL,
+    TRUE
+  ),
+  (
+    'provider_retail',
+    'exclude_cancelled_invoices',
+    'transformation',
+    'InvoiceNo NOT LIKE "C%"',
+    NULL,
+    TRUE
+  );
+
+  --Ingestion State
+  CREATE TABLE `config_metadata.IngestionState` (
+  provider_id           STRING,
+  layer                 STRING,     -- bronze / silver / gold
+  last_processed_time   TIMESTAMP,
+  max_event_time_seen   TIMESTAMP,
+  lookback_minutes      INT64,
+  last_run_status       STRING,
+  last_run_time         TIMESTAMP,
+  updated_at            TIMESTAMP
+);
+
+INSERT INTO `config_metadata.IngestionState` VALUES
+(
+  'provider_retail',
+  'silver',
+  TIMESTAMP('1970-01-01 00:00:00'),
+  TIMESTAMP('1970-01-01 00:00:00'),
+  1440,
+  'NEVER_RUN',
+  TIMESTAMP('1970-01-01 00:00:00'),
+  CURRENT_TIMESTAMP()
+),
+(
+  'provider_marketing',
+  'silver',
+  TIMESTAMP('1970-01-01 00:00:00'),
+  TIMESTAMP('1970-01-01 00:00:00'),
+  720,
+  'NEVER_RUN',
+  TIMESTAMP('1970-01-01 00:00:00'),
+  CURRENT_TIMESTAMP()
+);
